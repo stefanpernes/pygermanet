@@ -26,7 +26,7 @@ SHORT_POS_TO_LONG  = dict((v, k) for (k, v) in LONG_POS_TO_SHORT.items())
 
 DEFAULT_CACHE_SIZE = 100
 
-GERMANET_METAINFO_IGNORE_KEYS = set(['_id'])
+GERMANET_METAINFO_IGNORE_KEYS = {'_id'}
 
 class GermaNet(object):
     '''A class representing the GermaNet database.'''
@@ -43,9 +43,16 @@ class GermaNet(object):
         self._lemma_cache   = None
         self._synset_cache  = None
         self.max_min_depths = {}
-        self.__dict__.update((k, v) for (k, v)
-                             in self._mongo_db.metainfo.find_one().items()
-                             if k not in GERMANET_METAINFO_IGNORE_KEYS)
+
+        try:
+            self.__dict__.update((k, v) for (k, v)
+                                in self._mongo_db.metainfo.find_one().items()
+                                if k not in GERMANET_METAINFO_IGNORE_KEYS)
+        except AttributeError:
+             # ignore error generated if metainfo is not included in
+             # the mongo DB
+             pass
+
         try:
             self._lemma_cache  = repoze.lru.LRUCache(cache_size)
             self._synset_cache = repoze.lru.LRUCache(cache_size)
@@ -92,10 +99,9 @@ class GermaNet(object):
             if pos not in SHORT_POS_TO_LONG:
                 return None
             pos         = SHORT_POS_TO_LONG[pos]
-            lemma_dicts = self._mongo_db.lexunits.find({'orthForm': lemma,
-                                                        'category': pos})
+            lemma_dicts = self._mongo_db.lexunits.find(dict(orthForm=lemma, category=pos))
         else:
-            lemma_dicts = self._mongo_db.lexunits.find({'orthForm': lemma})
+            lemma_dicts = self._mongo_db.lexunits.find(dict(orthForm=lemma))
         return sorted([Lemma(self, lemma_dict) for lemma_dict in lemma_dicts])
 
     def all_synsets(self):
@@ -135,9 +141,8 @@ class GermaNet(object):
             return None
         sensenum   = int(sensenum, 10)
         pos        = SHORT_POS_TO_LONG[pos]
-        lemma_dict = self._mongo_db.lexunits.find_one({'orthForm': lemma,
-                                                       'category': pos,
-                                                       'sense':    sensenum})
+        lemma_dict = self._mongo_db.lexunits.find_one(
+            dict(sense=sensenum, orthForm=lemma, category=pos))
         if lemma_dict:
             return Lemma(self, lemma_dict).synset
 
@@ -226,7 +231,7 @@ class Synset(object):
         self.infocont     = 0.
         self._lexunits    = None
         self.__dict__.update((SYNSET_MEMBER_REWRITES.get(k, k), v)
-                             for (k, v) in db_dict.iteritems())
+                             for (k, v) in db_dict.items())
 
     @property
     def lemmas(self):
@@ -300,7 +305,7 @@ class Synset(object):
         '''
         hypernyms = self.hypernyms
         if hypernyms:
-            return reduce(list.__add__, [[path + [self]
+            return functools.reduce(list.__add__, [[path + [self]
                                           for path in hypernym.hypernym_paths]
                                          for hypernym in hypernyms], [])
         else:
@@ -313,7 +318,7 @@ class Synset(object):
         node, counting the distance of each node on the way.
         '''
         retval = dict()
-        for (synset, dist) in reduce(
+        for (synset, dist) in functools.reduce(
                 set.union,
                 [[(synset, idx) for (idx, synset) in enumerate(reversed(path))]
                  for path in self.hypernym_paths],
@@ -350,7 +355,7 @@ class Synset(object):
         return u'Synset({0}.{1}.{2})'.format(
             self.lemmas[0].orthForm,
             self.pos,
-            self.lemmas[0].sense).encode('utf-8')
+            self.lemmas[0].sense)
 
     def __hash__(self):
         return hash(self._id)
@@ -579,7 +584,7 @@ class Lemma(object):
         self.styleMarking = None
         self._synset      = None
         self.__dict__.update((LEMMA_MEMBER_REWRITES.get(k, k), v)
-                             for (k, v) in db_dict.iteritems())
+                             for (k, v) in db_dict.items())
 
     @property
     def synset(self):
@@ -625,7 +630,7 @@ class Lemma(object):
             self.synset.lemmas[0].orthForm,
             self.synset.pos,
             self.synset.lemmas[0].sense,
-            self.orthForm).encode('utf-8')
+            self.orthForm)
 
     def __hash__(self):
         return hash(self._id)
